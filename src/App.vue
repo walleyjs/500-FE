@@ -1,13 +1,11 @@
 <template>
          <div class="app-container">
            <div class="todo-card">
-             <!-- Header -->
              <div class="header">
                <h1 class="title">My Todo List</h1>
                <p class="subtitle">Stay organized and productive</p>
              </div>
        
-             <!-- Add Task Form -->
              <div class="form-section">
                <form @submit.prevent="addTask" class="add-form">
                  <div class="input-group">
@@ -33,16 +31,15 @@
                </form>
              </div>
        
-             <!-- Tasks List -->
+
              <div class="tasks-section">
-               <!-- Empty State -->
                <div v-if="tasks.length === 0" class="empty-state">
                  <div class="empty-icon">📝</div>
                  <p class="empty-title">No tasks yet</p>
                  <p class="empty-subtitle">Add your first task above to get started!</p>
                </div>
        
-               <!-- Tasks List -->
+
                <div v-else class="tasks-container">
                  <div class="tasks-header">
                    <span class="task-count">{{ tasks.length }} {{ tasks.length === 1 ? 'task' : 'tasks' }}</span>
@@ -56,14 +53,14 @@
                  
                  <div
                    v-for="task in tasks"
-                   :key="task.id"
+                   :key="task._id"
                    class="task-item"
                  >
-                   <!-- Normal View -->
+
                    <div v-if="!task.isEditing" class="task-content">
                      <div class="task-indicator"></div>
                      <div class="task-details">
-                       <p class="task-text">{{ task.text }}</p>
+                       <p class="task-text">{{ task.title }}</p>
                        <p class="task-meta">
                          Added {{ formatDate(task.createdAt) }}
                          <span v-if="task.updatedAt && task.updatedAt !== task.createdAt">
@@ -72,7 +69,6 @@
                        </p>
                      </div>
                      <div class="task-actions">
-                       <!-- Edit Button -->
                        <button
                          @click="startEditing(task)"
                          class="action-button edit-button"
@@ -80,9 +76,8 @@
                        >
                          ✏️
                        </button>
-                       <!-- Delete Button -->
                        <button
-                         @click="deleteTask(task.id)"
+                         @click="deleteTask(task._id)"
                          class="action-button delete-button"
                          title="Delete task"
                        >
@@ -91,7 +86,7 @@
                      </div>
                    </div>
        
-                   <!-- Edit View -->
+
                    <div v-else class="edit-container">
                      <div class="edit-content">
                        <div class="edit-indicator"></div>
@@ -130,7 +125,7 @@
                </div>
              </div>
        
-             <!-- Success Message -->
+
              <div
                v-if="successMessage"
                class="success-message"
@@ -143,155 +138,157 @@
        </template>
        
        <script>
+       import { getTasks, createTask, updateTask, deleteTask } from './api.js';
+       
        export default {
          name: 'TodoApp',
          data() {
            return {
-             tasks: [
-               {
-                 id: 1,
-                 text: 'Complete the project documentation',
-                 createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-                 updatedAt: null,
-                 isEditing: false,
-                 editText: ''
-               },
-               {
-                 id: 2,
-                 text: 'Review code changes',
-                 createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-                 updatedAt: null,
-                 isEditing: false,
-                 editText: ''
-               },
-               {
-                 id: 3,
-                 text: 'Prepare for team meeting',
-                 createdAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-                 updatedAt: null,
-                 isEditing: false,
-                 editText: ''
-               }
-             ],
+             tasks: [],
              newTaskText: '',
              successMessage: '',
-             nextId: 4
+             loading: false,
+             error: '',
            }
          },
+         async created() {
+           await this.fetchTasks();
+         },
          methods: {
-           addTask() {
-             if (!this.newTaskText.trim()) return
-             
-             const newTask = {
-               id: this.nextId++,
-               text: this.newTaskText.trim(),
-               createdAt: new Date().toISOString(),
-               updatedAt: null,
-               isEditing: false,
-               editText: ''
+           async fetchTasks() {
+             this.loading = true;
+             this.error = '';
+             try {
+               const res = await getTasks();
+               this.tasks = (res.data || []).map(task => ({
+                 ...task,
+                 isEditing: false,
+                 editText: task.title,
+               }));
+             } catch (err) {
+               this.error = 'Failed to load tasks.';
+             } finally {
+               this.loading = false;
              }
-             
-             this.tasks.unshift(newTask)
-             this.newTaskText = ''
-             this.showSuccessMessage('Task added successfully!')
            },
-           
+           async addTask() {
+             if (!this.newTaskText.trim()) return;
+             try {
+               const res = await createTask(this.newTaskText.trim());
+               const task = {
+                 ...res.data,
+                 isEditing: false,
+                 editText: res.data.title,
+               };
+               this.tasks.unshift(task);
+               this.newTaskText = '';
+               this.showSuccessMessage('Task added successfully!');
+             } catch (err) {
+               this.error = 'Failed to add task.';
+             }
+           },
            startEditing(task) {
              this.tasks.forEach(t => {
-               if (t.id !== task.id) {
-                 this.cancelEdit(t)
+               if (t._id !== task._id) {
+                 this.cancelEdit(t);
                }
-             })
-             
-             task.isEditing = true
-             task.editText = task.text
-             
+             });
+             task.isEditing = true;
+             task.editText = task.title;
              this.$nextTick(() => {
-               const editInputs = this.$refs.editInput
+               const editInputs = this.$refs.editInput;
                if (editInputs) {
-                 const inputArray = Array.isArray(editInputs) ? editInputs : [editInputs]
-                 const targetInput = inputArray.find(input => input.value === task.text)
+                 const inputArray = Array.isArray(editInputs) ? editInputs : [editInputs];
+                 const targetInput = inputArray.find(input => input.value === task.title);
                  if (targetInput) {
-                   targetInput.focus()
-                   targetInput.select()
+                   targetInput.focus();
+                   targetInput.select();
                  }
                }
-             })
+             });
            },
-           
-           saveEdit(task) {
+           async saveEdit(task) {
              if (!task.editText.trim()) {
-               this.showSuccessMessage('Task text cannot be empty!')
-               return
+               this.showSuccessMessage('Task text cannot be empty!');
+               return;
              }
-             
-             if (task.editText.trim() === task.text) {
-               this.cancelEdit(task)
-               return
+             if (task.editText.trim() === task.title) {
+               this.cancelEdit(task);
+               return;
              }
-             
-             task.text = task.editText.trim()
-             task.updatedAt = new Date().toISOString()
-             task.isEditing = false
-             task.editText = ''
-             
-             this.showSuccessMessage('Task updated successfully!')
+             try {
+               const res = await updateTask(task._id, { title: task.editText });
+               task.title = res.data.title;
+               task.updatedAt = res.data.updatedAt;
+               task.isEditing = false;
+               task.editText = res.data.title;
+               this.showSuccessMessage('Task updated successfully!');
+             } catch (err) {
+               this.error = 'Failed to update task.';
+             }
            },
-           
            cancelEdit(task) {
-             task.isEditing = false
-             task.editText = ''
+             task.isEditing = false;
+             task.editText = task.title;
            },
-           
-           deleteTask(taskId) {
-             const task = this.tasks.find(t => t.id === taskId)
-             if (!task) return
-             
-             if (confirm(`Are you sure you want to delete "${task.text}"?`)) {
-               this.tasks = this.tasks.filter(t => t.id !== taskId)
-               this.showSuccessMessage('Task deleted successfully!')
+           async deleteTask(taskId) {
+             const task = this.tasks.find(t => t._id === taskId);
+             if (!task) return;
+             if (confirm(`Are you sure you want to delete "${task.title}"?`)) {
+               try {
+                 await deleteTask(taskId);
+                 this.tasks = this.tasks.filter(t => t._id !== taskId);
+                 this.showSuccessMessage('Task deleted successfully!');
+               } catch (err) {
+                 this.error = 'Failed to delete task.';
+               }
              }
            },
-           
-           clearAllTasks() {
+           async clearAllTasks() {
              if (confirm('Are you sure you want to clear all tasks?')) {
-               this.tasks = []
-               this.showSuccessMessage('All tasks cleared!')
+               this.loading = true;
+               try {
+                 for (const task of this.tasks) {
+                   await deleteTask(task._id);
+                 }
+                 this.tasks = [];
+                 this.showSuccessMessage('All tasks cleared!');
+               } catch (err) {
+                 this.error = 'Failed to clear all tasks.';
+               } finally {
+                 this.loading = false;
+               }
              }
            },
-           
            showSuccessMessage(message) {
-             this.successMessage = message
+             this.successMessage = message;
              setTimeout(() => {
-               this.successMessage = ''
-             }, 3000)
+               this.successMessage = '';
+             }, 3000);
            },
-           
            formatDate(dateString) {
-             const date = new Date(dateString)
-             const now = new Date()
-             const diffInMinutes = (now - date) / (1000 * 60)
-             const diffInHours = diffInMinutes / 60
-             const diffInDays = diffInHours / 24
-             
+             const date = new Date(dateString);
+             const now = new Date();
+             const diffInMinutes = (now - date) / (1000 * 60);
+             const diffInHours = diffInMinutes / 60;
+             const diffInDays = diffInHours / 24;
              if (diffInMinutes < 1) {
-               return 'just now'
+               return 'just now';
              } else if (diffInMinutes < 60) {
-               return `${Math.floor(diffInMinutes)} minutes ago`
+               return `${Math.floor(diffInMinutes)} minutes ago`;
              } else if (diffInHours < 24) {
-               return `${Math.floor(diffInHours)} hours ago`
+               return `${Math.floor(diffInHours)} hours ago`;
              } else if (diffInDays < 7) {
-               return `${Math.floor(diffInDays)} days ago`
+               return `${Math.floor(diffInDays)} days ago`;
              } else {
-               return date.toLocaleDateString()
+               return date.toLocaleDateString();
              }
-           }
+           },
          }
        }
        </script>
        
        <style scoped>
-       /* Container Styles */
        .app-container {
          min-height: 100vh;
          background-color: #f9fafb;
@@ -308,7 +305,6 @@
          overflow: hidden;
        }
        
-       /* Header Styles */
        .header {
          background-color: #3b82f6;
          color: white;
@@ -328,7 +324,6 @@
          font-size: 0.875rem;
        }
        
-       /* Form Styles */
        .form-section {
          padding: 1.5rem;
          border-bottom: 1px solid #e5e7eb;
@@ -389,12 +384,10 @@
          cursor: not-allowed;
        }
        
-       /* Tasks Section */
        .tasks-section {
          padding: 1.5rem;
        }
        
-       /* Empty State */
        .empty-state {
          text-align: center;
          padding: 2rem 0;
@@ -418,7 +411,6 @@
          font-size: 0.875rem;
        }
        
-       /* Tasks Container */
        .tasks-container {
          display: flex;
          flex-direction: column;
@@ -452,7 +444,6 @@
          color: #dc2626;
        }
        
-       /* Task Item */
        .task-item {
          background-color: #f9fafb;
          border-radius: 0.5rem;
@@ -524,7 +515,6 @@
          background-color: #fee2e2;
        }
        
-       /* Edit Mode */
        .edit-container {
          display: flex;
          flex-direction: column;
@@ -611,7 +601,6 @@
          cursor: not-allowed;
        }
        
-       /* Success Message */
        .success-message {
          position: fixed;
          bottom: 1rem;
@@ -629,7 +618,6 @@
          opacity: 0;
        }
        
-       /* Responsive Design */
        @media (max-width: 640px) {
          .app-container {
            padding: 1rem 0.5rem;
